@@ -1,3 +1,4 @@
+using ClubFlow.Api.Dtos;
 using ClubFlow.Api.Models;
 using ClubFlow.Api.Responses;
 using ClubFlow.Api.Services;
@@ -47,6 +48,66 @@ public sealed class EventsController : ControllerBase
         }
 
         return Ok(new ApiResponse<Event>("Event retrieved successfully.", clubEvent));
+    }
+
+    [HttpPost]
+    public IActionResult Create(CreateEventRequest request)
+    {
+        var createdEvent = _eventStore.Create(new Event
+        {
+            OwnerId = request.OwnerId,
+            Title = request.Title,
+            Description = request.Description,
+            Location = request.Location,
+            StartTimeUtc = request.StartTimeUtc.ToUniversalTime(),
+            EndTimeUtc = request.EndTimeUtc.ToUniversalTime(),
+            Capacity = request.Capacity,
+            ExpectedAttendance = request.ExpectedAttendance,
+            Status = request.Status
+        });
+
+        return CreatedAtAction(nameof(GetById), new { id = createdEvent.Id },
+            new ApiResponse<Event>("Event created successfully.", createdEvent));
+    }
+
+    [HttpPut("{id}")]
+    public IActionResult Update(int id, UpdateEventRequest request)
+    {
+        var existingEvent = _eventStore.GetById(id);
+        if (existingEvent is null)
+        {
+            return EventNotFound();
+        }
+
+        var updatedEvent = _eventStore.Update(id, existingEvent with
+        {
+            Title = request.Title,
+            Description = request.Description,
+            Location = request.Location,
+            StartTimeUtc = request.StartTimeUtc.ToUniversalTime(),
+            EndTimeUtc = request.EndTimeUtc.ToUniversalTime(),
+            Capacity = request.Capacity,
+            ExpectedAttendance = request.ExpectedAttendance,
+            Status = request.Status
+        });
+
+        if (updatedEvent is null)
+        {
+            return EventNotFound();
+        }
+
+        return Ok(new ApiResponse<Event>("Event updated successfully.", updatedEvent));
+    }
+
+    [HttpDelete("{id}")]
+    public IActionResult Delete(int id)
+    {
+        if (!_eventStore.Delete(id))
+        {
+            return EventNotFound();
+        }
+
+        return Ok(new ApiResponse<Event?>("Event deleted successfully.", null));
     }
 
     private NotFoundObjectResult EventNotFound()
