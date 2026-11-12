@@ -1,23 +1,21 @@
 using System.Text.Json.Serialization;
 using ClubFlow.Api.Authentication;
-using ClubFlow.Api.Models;
 using ClubFlow.Api.Responses;
+using ClubFlow.Api.Serialization;
 using ClubFlow.Api.Services;
 using Microsoft.AspNetCore.Authentication;
-using Microsoft.AspNetCore.Mvc;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
     {
-        options.JsonSerializerOptions.Converters.Add(
-            new JsonStringEnumConverter<EventStatus>(allowIntegerValues: false));
+        options.JsonSerializerOptions.NumberHandling = JsonNumberHandling.Strict;
+        options.JsonSerializerOptions.Converters.Add(new EventStatusJsonConverter());
     })
     .ConfigureApiBehaviorOptions(options =>
     {
-        options.InvalidModelStateResponseFactory = _ => new BadRequestObjectResult(
-            new ApiErrorResponse(new ApiError("INVALID_REQUEST", "The request body or parameters are invalid.")));
+        options.InvalidModelStateResponseFactory = ValidationErrorResponseFactory.Create;
     });
 builder.Services.AddSingleton<EventStore>();
 builder.Services.AddAuthentication(MockBearerAuthenticationHandler.SchemeName)

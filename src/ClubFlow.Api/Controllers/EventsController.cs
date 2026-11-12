@@ -68,9 +68,9 @@ public sealed class EventsController : ControllerBase
             Title = request.Title,
             Description = request.Description,
             Location = request.Location,
-            StartTimeUtc = request.StartTimeUtc.ToUniversalTime(),
-            EndTimeUtc = request.EndTimeUtc.ToUniversalTime(),
-            Capacity = request.Capacity,
+            StartTimeUtc = request.StartTimeUtc!.Value.ToUniversalTime(),
+            EndTimeUtc = request.EndTimeUtc!.Value.ToUniversalTime(),
+            Capacity = request.Capacity!.Value,
             ExpectedAttendance = request.ExpectedAttendance,
             Status = request.Status
         });
@@ -98,9 +98,9 @@ public sealed class EventsController : ControllerBase
             Title = request.Title,
             Description = request.Description,
             Location = request.Location,
-            StartTimeUtc = request.StartTimeUtc.ToUniversalTime(),
-            EndTimeUtc = request.EndTimeUtc.ToUniversalTime(),
-            Capacity = request.Capacity,
+            StartTimeUtc = request.StartTimeUtc!.Value.ToUniversalTime(),
+            EndTimeUtc = request.EndTimeUtc!.Value.ToUniversalTime(),
+            Capacity = request.Capacity!.Value,
             ExpectedAttendance = request.ExpectedAttendance,
             Status = request.Status
         });

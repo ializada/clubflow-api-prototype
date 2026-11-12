@@ -17,4 +17,10 @@ public sealed record ApiErrorResponse(ApiError Error)
     public bool Success => false;
 }
 
-public sealed record ApiError(string Code, string Message);
+public sealed record ApiError(
+    string Code,
+    string Message,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    IReadOnlyList<ValidationErrorDetail>? Details = null);
+
+public sealed record ValidationErrorDetail(string Field, string Message);
