@@ -1,12 +1,16 @@
+using System.Security.Claims;
+using ClubFlow.Api.Authentication;
 using ClubFlow.Api.Dtos;
 using ClubFlow.Api.Models;
 using ClubFlow.Api.Responses;
 using ClubFlow.Api.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace ClubFlow.Api.Controllers;
 
 [ApiController]
+[Authorize]
 [Route("api/v1/events")]
 public sealed class EventsController : ControllerBase
 {
@@ -26,15 +30,15 @@ public sealed class EventsController : ControllerBase
                 "INVALID_PAGINATION", "Page must be at least 1 and perPage must be between 1 and 100.")));
         }
 
-        var events = _eventStore.GetAll();
+        var events = _eventStore.GetAll().Where(CanAccess).ToArray();
         var offset = (long)(page - 1) * perPage;
-        var data = offset >= events.Count
+        var data = offset >= events.Length
             ? Array.Empty<Event>()
             : events.Skip((int)offset).Take(perPage).ToArray();
 
         return Ok(new ApiResponse<Event[]>("Events retrieved successfully.", data)
         {
-            Meta = new PaginationMeta(events.Count, page, perPage)
+            Meta = new PaginationMeta(events.Length, page, perPage)
         });
     }
 
@@ -47,6 +51,11 @@ public sealed class EventsController : ControllerBase
             return EventNotFound();
         }
 
+        if (!CanAccess(clubEvent))
+        {
+            return Forbid();
+        }
+
         return Ok(new ApiResponse<Event>("Event retrieved successfully.", clubEvent));
     }
 
@@ -55,7 +64,7 @@ public sealed class EventsController : ControllerBase
     {
         var createdEvent = _eventStore.Create(new Event
         {
-            OwnerId = request.OwnerId,
+            OwnerId = User.FindFirstValue(ClaimTypes.NameIdentifier)!,
             Title = request.Title,
             Description = request.Description,
             Location = request.Location,
@@ -77,6 +86,11 @@ public sealed class EventsController : ControllerBase
         if (existingEvent is null)
         {
             return EventNotFound();
+        }
+
+        if (!CanAccess(existingEvent))
+        {
+            return Forbid();
         }
 
         var updatedEvent = _eventStore.Update(id, existingEvent with
@@ -102,12 +116,29 @@ public sealed class EventsController : ControllerBase
     [HttpDelete("{id}")]
     public IActionResult Delete(int id)
     {
+        var existingEvent = _eventStore.GetById(id);
+        if (existingEvent is null)
+        {
+            return EventNotFound();
+        }
+
+        if (!CanAccess(existingEvent))
+        {
+            return Forbid();
+        }
+
         if (!_eventStore.Delete(id))
         {
             return EventNotFound();
         }
 
         return Ok(new ApiResponse<Event?>("Event deleted successfully.", null));
+    }
+
+    private bool CanAccess(Event clubEvent)
+    {
+        return User.IsInRole(MockBearerAuthenticationHandler.AdministratorRole)
+            || clubEvent.OwnerId == User.FindFirstValue(ClaimTypes.NameIdentifier);
     }
 
     private NotFoundObjectResult EventNotFound()
