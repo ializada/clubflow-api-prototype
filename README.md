@@ -55,7 +55,8 @@ Events are ordered by ID; `total` counts accessible events before pagination. Pa
 an empty list. Invalid pagination returns 400 with error code `INVALID_PAGINATION`.
 
 Errors use `{ "success": false, "error": { "code": "NOT_FOUND", "message": "Event not found." } }`.
-Malformed JSON or parameters return 400 with error code `INVALID_REQUEST`.
+Invalid POST/PUT fields, incorrect JSON types, and malformed JSON return 400
+`VALIDATION_ERROR` with field details. Invalid GET parameters retain `INVALID_REQUEST`.
 
 Missing, invalid, malformed, or unsupported Authorization credentials return HTTP 401
 and a `WWW-Authenticate: Bearer` header:
@@ -99,7 +100,16 @@ also preserves the existing owner. Unrecognized JSON properties are ignored.
 
 Body-supplied IDs, `ownerId`, and roles cannot override identity or permissions.
 Stage 4 replaces Stage 3's temporary body-supplied ownership with authenticated ownership.
-Detailed field validation remains for Stage 5.
+
+POST and PUT require a nonblank title (3-100 characters), description (up to 1000),
+and location (up to 150), valid start/end times with end after start, and positive
+integer capacity. Attendance must be nonnegative and defaults to 0; status defaults
+to `Draft`. Dates are normalized to UTC; past events are allowed.
+
+An organizer cannot have two events with the same title, location, and start-time
+instant. Comparisons ignore title/location case and surrounding whitespace. Duplicate
+POST/PUT requests return 409 `CONFLICT`; different owners may use identical details.
+Unsupported methods return 405 `METHOD_NOT_ALLOWED` with an Allow header; HEAD has no body.
 
 The singleton store seeds four events on first use, split evenly between `user-a`
 and `user-b`, with UTC dates 7–21 days ahead. Changes last only for the running
@@ -109,6 +119,28 @@ The exact HTTP requests, request bodies, observed status codes, and restart chec
 are recorded in [the Stage 3 verification report](docs/events-crud-verification.md).
 That historical report predates authentication. Stage 4 checks are recorded in
 [the authentication verification report](docs/event-authentication-verification.md).
+Current validation, conflict rules, and test results are in
+[the Stage 5 verification report](docs/event-validation-verification.md).
+
+## Run the HTTP tests
+
+Run tests sequentially against a local development instance. In a PowerShell 7.5+
+terminal, start the backend with its original four events and run:
+
+```powershell
+.\scripts\Test-EventAuthentication.ps1 -BaseUrl http://localhost:5024
+```
+
+Restart the backend (Ctrl+C, then the same `dotnet run` command above), then run:
+
+```powershell
+.\scripts\Test-EventAuthentication.ps1 -AfterRestart -BaseUrl http://localhost:5024
+powershell.exe -NoProfile -File .\scripts\Test-EventValidation.ps1 -BaseUrl http://localhost:5024
+```
+
+The validation script supports Windows PowerShell 5.1, uses unique data, cleans up
+its events, and can be rerun without restarting. Both scripts fail with a nonzero
+exit code when an assertion fails. See the Stage 5 report for coverage and examples.
 
 ## Project structure
 
@@ -129,6 +161,9 @@ src/
     appsettings.Development.json
     ClubFlow.Api.csproj
     Program.cs
-    Responses/ApiResponses.cs
+    Responses/
+      ApiResponses.cs
+      ValidationErrorResponseFactory.cs
+    Serialization/EventStatusJsonConverter.cs
     Services/EventStore.cs
 ```
