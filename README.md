@@ -124,7 +124,7 @@ CONTRIBUTORS.md       Team details
 - **Zamin Ashurov (18125):** greeting page, API documentation, testing and final project documentation.
 
 GitHub usernames and responsibilities are listed in [CONTRIBUTORS.md](CONTRIBUTORS.md).
-Contribution snapshot taken during final preparation (2026-11-12):
+Contribution snapshot taken during final preparation:
 
 ```text
     14  Ismayil Alizada
