@@ -46,6 +46,7 @@ public sealed class GreetingController : ControllerBase
                 .write { background: #edf0f7; color: #3f527d; }
                 .delete { background: #f8eeea; color: #854e3b; }
                 .access { color: #52665f; font-size: 12px; }
+                .endpoint-description { margin: 2px 0 0; color: #52665f; font-size: 13px; }
                 .team { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
                 article { padding: 24px; border: 1px solid #d7dfd7; border-radius: 16px; background: white; }
                 article h3 { margin: 0 0 3px; font-size: 17px; }
@@ -79,12 +80,12 @@ public sealed class GreetingController : ControllerBase
                   <h2 id="endpoints-title">API endpoints</h2>
                   <p class="intro">Events require a bearer token. This greeting page is public.</p>
                   <ul class="endpoints">
-                    <li class="endpoint"><span class="method">GET</span><code>/api/v1/events</code><span class="access">Authenticated</span></li>
-                    <li class="endpoint"><span class="method">GET</span><code>/api/v1/events/{id}</code><span class="access">Authenticated</span></li>
-                    <li class="endpoint"><span class="method write">POST</span><code>/api/v1/events</code><span class="access">Authenticated</span></li>
-                    <li class="endpoint"><span class="method write">PUT</span><code>/api/v1/events/{id}</code><span class="access">Authenticated</span></li>
-                    <li class="endpoint"><span class="method delete">DELETE</span><code>/api/v1/events/{id}</code><span class="access">Authenticated</span></li>
-                    <li class="endpoint"><span class="method">GET</span><code>/api/v1/greeting</code><span class="access">Public</span></li>
+                    <li class="endpoint"><span class="method">GET</span><div><code>/api/v1/events</code><p class="endpoint-description">List events accessible to the current user.</p></div><span class="access">Authenticated</span></li>
+                    <li class="endpoint"><span class="method">GET</span><div><code>/api/v1/events/{id}</code><p class="endpoint-description">View the details of a specific event.</p></div><span class="access">Authenticated</span></li>
+                    <li class="endpoint"><span class="method write">POST</span><div><code>/api/v1/events</code><p class="endpoint-description">Create a new event.</p></div><span class="access">Authenticated</span></li>
+                    <li class="endpoint"><span class="method write">PUT</span><div><code>/api/v1/events/{id}</code><p class="endpoint-description">Update an existing event.</p></div><span class="access">Authenticated</span></li>
+                    <li class="endpoint"><span class="method delete">DELETE</span><div><code>/api/v1/events/{id}</code><p class="endpoint-description">Delete an event.</p></div><span class="access">Authenticated</span></li>
+                    <li class="endpoint"><span class="method">GET</span><div><code>/api/v1/greeting</code><p class="endpoint-description">Display ClubFlow project information.</p></div><span class="access">Public</span></li>
                   </ul>
                 </section>
                 <section aria-labelledby="team-title">
