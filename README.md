@@ -124,9 +124,16 @@ CONTRIBUTORS.md       Team details
 - **Zamin Ashurov (18125):** greeting page, API documentation, testing and final project documentation.
 
 GitHub usernames and responsibilities are listed in [CONTRIBUTORS.md](CONTRIBUTORS.md).
-Current output of `git shortlog -sn --all`:
+Contribution snapshot taken during final preparation (2026-11-12):
 
 ```text
-    13  Ismayil Alizada
+    14  Ismayil Alizada
      6  Toghrul Ismayilzada
+     4  Zamin Ashurov
+```
+
+Counts change as commits and pull requests are merged. Generate the latest output with:
+
+```powershell
+git shortlog -sn --all
 ```
