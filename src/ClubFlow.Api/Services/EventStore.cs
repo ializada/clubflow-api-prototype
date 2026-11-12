@@ -81,26 +81,38 @@ public sealed class EventStore
         }
     }
 
-    public Event Create(Event clubEvent)
+    public Event? Create(Event clubEvent)
     {
         lock (_lock)
         {
+            if (HasDuplicate(clubEvent))
+            {
+                return null;
+            }
+
             var createdEvent = clubEvent with { Id = _nextId++ };
             _events.Add(createdEvent.Id, createdEvent);
             return createdEvent;
         }
     }
 
-    public Event? Update(int id, Event clubEvent)
+    public Event? Update(int id, Event clubEvent, out bool conflict)
     {
         lock (_lock)
         {
-            if (!_events.ContainsKey(id))
+            conflict = false;
+            if (!_events.TryGetValue(id, out var existingEvent))
             {
                 return null;
             }
 
-            var updatedEvent = clubEvent with { Id = id };
+            var updatedEvent = clubEvent with { Id = id, OwnerId = existingEvent.OwnerId };
+            if (HasDuplicate(updatedEvent, id))
+            {
+                conflict = true;
+                return null;
+            }
+
             _events[id] = updatedEvent;
             return updatedEvent;
         }
@@ -112,5 +124,15 @@ public sealed class EventStore
         {
             return _events.Remove(id);
         }
+    }
+
+    // Called only while holding _lock so duplicate detection and writes stay atomic.
+    private bool HasDuplicate(Event clubEvent, int? excludedId = null)
+    {
+        return _events.Values.Any(existing => existing.Id != excludedId
+            && existing.OwnerId == clubEvent.OwnerId
+            && string.Equals(existing.Title.Trim(), clubEvent.Title.Trim(), StringComparison.OrdinalIgnoreCase)
+            && string.Equals(existing.Location.Trim(), clubEvent.Location.Trim(), StringComparison.OrdinalIgnoreCase)
+            && existing.StartTimeUtc == clubEvent.StartTimeUtc);
     }
 }

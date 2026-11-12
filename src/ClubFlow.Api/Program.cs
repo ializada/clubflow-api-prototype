@@ -25,6 +25,16 @@ builder.Services.AddAuthorization();
 
 var app = builder.Build();
 
+app.UseStatusCodePages(async context =>
+{
+    if (context.HttpContext.Response.StatusCode == StatusCodes.Status405MethodNotAllowed)
+    {
+        await context.HttpContext.Response.WriteAsJsonAsync(new ApiErrorResponse(new ApiError(
+            "METHOD_NOT_ALLOWED", "The HTTP method is not allowed for this resource.")),
+            context.HttpContext.RequestAborted);
+    }
+});
+
 app.UseAuthentication();
 app.UseAuthorization();
 
