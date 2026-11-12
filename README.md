@@ -1,11 +1,24 @@
-# clubflow-api-prototype
+# ClubFlow API Prototype
 
-ClubFlow is an event and volunteer management platform for student clubs.
-The prototype is an ASP.NET Core Web API targeting .NET 10 with controller-based event CRUD and in-memory storage.
+## About
 
-## Local setup
+ClubFlow is an event and volunteer management platform for student clubs and small
+organizations. This prototype implements the event management REST API using mock
+data. It includes event CRUD, predefined bearer tokens, ownership permissions,
+request validation, duplicate-event handling, and a public HTML greeting page.
 
-Install the .NET 10 SDK, then run these commands from the repository root:
+Data is stored in memory. Restarting the backend restores four sample university
+events and resets ID allocation.
+
+## Requirements
+
+- .NET 10 SDK
+- Windows PowerShell 5.1 or later for the HTTP test scripts
+- Git to inspect contribution history
+
+## Getting Started
+
+Run these commands from the repository root:
 
 ```powershell
 dotnet restore
@@ -13,18 +26,29 @@ dotnet build
 dotnet run --project src/ClubFlow.Api
 ```
 
-The API starts at `http://localhost:5024` using the HTTP development launch profile.
-Press `Ctrl+C` to stop it.
+The development URL is `http://localhost:5024`. Open the public greeting page at
+[http://localhost:5024/api/v1/greeting](http://localhost:5024/api/v1/greeting).
+Press Ctrl+C to stop the backend. `/` has no route and returns 404.
 
-Requests to `/` return HTTP 404. The events API is available at `/api/v1/events`.
+## API Endpoints
 
-## Events API
+| Method | Path | Purpose |
+| --- | --- | --- |
+| GET | `/api/v1/events` | List accessible events with pagination |
+| GET | `/api/v1/events/{id}` | Retrieve an event |
+| POST | `/api/v1/events` | Create an event |
+| PUT | `/api/v1/events/{id}` | Replace editable event fields |
+| DELETE | `/api/v1/events/{id}` | Delete an event |
+| GET | `/api/v1/greeting` | Public HTML project and team overview |
 
-All five endpoints require an `Authorization: Bearer <token>` header. For example:
+See [docs/api.md](docs/api.md) for headers, parameters, payloads, responses, and
+error codes. [requests/events.http](requests/events.http) provides example requests
+for HTTP clients that support `.http` files.
 
-```powershell
-Invoke-RestMethod http://localhost:5024/api/v1/events -Headers @{ Authorization = 'Bearer user-a-token' }
-```
+## Authentication
+
+All Events endpoints require `Authorization: Bearer <token>`. The greeting page
+requires no authentication.
 
 | Mock token | User ID | Role |
 | --- | --- | --- |
@@ -32,138 +56,77 @@ Invoke-RestMethod http://localhost:5024/api/v1/events -Headers @{ Authorization 
 | `user-b-token` | `user-b` | Regular |
 | `admin-token` | `admin` | Administrator |
 
-These predefined tokens are for the assignment prototype. There is no login,
-token generation, password storage, or database.
+Regular users can manage only their own events. Administrators can access all
+events. The creator's identity determines ownership; request bodies cannot change
+IDs, owners, or roles. These tokens are for the prototype; there is no login flow.
 
-Regular users can list, retrieve, update, and delete only their own events.
-Administrators can access every event. Ownership filtering happens before pagination;
-`meta.total` counts only accessible events. All authenticated users can create events,
-and the server always sets `ownerId` from the authenticated user's ID, including `admin`.
+## Event Rules
 
-| Method | Path | Success | Missing event |
-| --- | --- | --- | --- |
-| GET | `/api/v1/events?page=1&perPage=20` | 200 | — |
-| GET | `/api/v1/events/{id}` | 200 | 404 |
-| POST | `/api/v1/events` | 201 with a Location header | — |
-| PUT | `/api/v1/events/{id}` | 200 | 404 |
-| DELETE | `/api/v1/events/{id}` | 200 with `data: null` | 404 |
+- Title, description, and location are required and cannot be blank. Title is
+  3-100 characters; description allows up to 1000 and location up to 150.
+- Start and end times are required; end must be later. Times normalize to UTC,
+  and past dates are allowed.
+- Capacity is a required positive integer. Expected attendance is nonnegative
+  and defaults to 0. Status is Draft, Published, or Cancelled and defaults to Draft.
+- An owner cannot have duplicate title, location, and start-time combinations.
+  Comparisons ignore title/location case and surrounding whitespace. Other owners
+  may use identical details. Conflicting writes return 409 without changing data.
 
-Success responses contain `success`, `message`, and `data`. Lists also include
-`meta: { "total": 2, "page": 1, "perPage": 20 }` for an initial regular user's list.
-Events are ordered by ID; `total` counts accessible events before pagination. Pagination defaults to page 1 and
-20 events per page, with a maximum of 100. Pages beyond the available data return
-an empty list. Invalid pagination returns 400 with error code `INVALID_PAGINATION`.
+Lists default to page 1 and 20 events per page (maximum 100). Ownership filtering
+happens before pagination, and totals count only accessible events. JSON writes
+use `Content-Type: application/json`; validation failures return 400 with field details.
 
-Errors use `{ "success": false, "error": { "code": "NOT_FOUND", "message": "Event not found." } }`.
-Invalid POST/PUT fields, incorrect JSON types, and malformed JSON return 400
-`VALIDATION_ERROR` with field details. Invalid GET parameters retain `INVALID_REQUEST`.
+## Testing
 
-Missing, invalid, malformed, or unsupported Authorization credentials return HTTP 401
-and a `WWW-Authenticate: Bearer` header:
-
-```json
-{ "success": false, "error": { "code": "UNAUTHORIZED", "message": "Authentication is required." } }
-```
-
-Access to another user's existing event returns HTTP 403:
-
-```json
-{ "success": false, "error": { "code": "FORBIDDEN", "message": "You do not have permission to access this event." } }
-```
-
-Authenticated requests for nonexistent IDs return 404. Authorization runs before
-request body parsing; unauthenticated requests receive 401 even if the body is malformed.
-
-Send request bodies as `Content-Type: application/json`. Status values are JSON
-strings: `Draft`, `Published`, or `Cancelled`; responses use exactly these spellings.
-Input is case-insensitive. Numeric and unknown status values return 400.
-Dates accept ISO 8601 timestamps with an offset and are stored and returned in UTC.
-
-Example POST body:
-
-```json
-{
-  "title": "Student API Workshop",
-  "description": "Build and test an API with the Programming Club.",
-  "location": "Engineering Lab 204",
-  "startTimeUtc": "2026-12-05T13:00:00Z",
-  "endTimeUtc": "2026-12-05T15:00:00Z",
-  "capacity": 30,
-  "expectedAttendance": 24,
-  "status": "Draft"
-}
-```
-
-PUT replaces all editable properties. Use the same fields as POST.
-IDs are generated by the server; request bodies cannot set or change them. PUT
-also preserves the existing owner. Unrecognized JSON properties are ignored.
-
-Body-supplied IDs, `ownerId`, and roles cannot override identity or permissions.
-Stage 4 replaces Stage 3's temporary body-supplied ownership with authenticated ownership.
-
-POST and PUT require a nonblank title (3-100 characters), description (up to 1000),
-and location (up to 150), valid start/end times with end after start, and positive
-integer capacity. Attendance must be nonnegative and defaults to 0; status defaults
-to `Draft`. Dates are normalized to UTC; past events are allowed.
-
-An organizer cannot have two events with the same title, location, and start-time
-instant. Comparisons ignore title/location case and surrounding whitespace. Duplicate
-POST/PUT requests return 409 `CONFLICT`; different owners may use identical details.
-Unsupported methods return 405 `METHOD_NOT_ALLOWED` with an Allow header; HEAD has no body.
-
-The singleton store seeds four events on first use, split evenly between `user-a`
-and `user-b`, with UTC dates 7–21 days ahead. Changes last only for the running
-process. Restarting restores the initial mock data and resets ID allocation.
-
-The exact HTTP requests, request bodies, observed status codes, and restart checks
-are recorded in [the Stage 3 verification report](docs/events-crud-verification.md).
-That historical report predates authentication. Stage 4 checks are recorded in
-[the authentication verification report](docs/event-authentication-verification.md).
-Current validation, conflict rules, and test results are in
-[the Stage 5 verification report](docs/event-validation-verification.md).
-
-## Run the HTTP tests
-
-Run tests sequentially against a local development instance. In a PowerShell 7.5+
-terminal, start the backend with its original four events and run:
+Run the scripts sequentially against a local development instance. The authentication
+script needs a fresh backend with the original four events and initial ID allocation:
 
 ```powershell
-.\scripts\Test-EventAuthentication.ps1 -BaseUrl http://localhost:5024
+powershell.exe -NoProfile -File .\scripts\Test-EventAuthentication.ps1 -BaseUrl http://localhost:5024
 ```
 
-Restart the backend (Ctrl+C, then the same `dotnet run` command above), then run:
+Stop and restart the backend using the run command above, then run:
 
 ```powershell
-.\scripts\Test-EventAuthentication.ps1 -AfterRestart -BaseUrl http://localhost:5024
+powershell.exe -NoProfile -File .\scripts\Test-EventAuthentication.ps1 -AfterRestart -BaseUrl http://localhost:5024
 powershell.exe -NoProfile -File .\scripts\Test-EventValidation.ps1 -BaseUrl http://localhost:5024
 ```
 
-The validation script supports Windows PowerShell 5.1, uses unique data, cleans up
-its events, and can be rerun without restarting. Both scripts fail with a nonzero
-exit code when an assertion fails. See the Stage 5 report for coverage and examples.
+Both scripts support Windows PowerShell 5.1 and return a nonzero exit code on
+failure. The validation script uses unique data and cleans up its own events, so
+it can be rerun without restarting. Existing [verification reports](docs/) record
+the HTTP coverage. The greeting can be checked directly in a browser.
 
-## Project structure
+## Project Structure
 
 ```text
 ClubFlow.sln
-src/
-  ClubFlow.Api/
-    Authentication/MockBearerAuthenticationHandler.cs
-    Controllers/EventsController.cs
-    Dtos/
-      CreateEventRequest.cs
-      UpdateEventRequest.cs
-    Models/
-      Event.cs
-      EventStatus.cs
-    Properties/launchSettings.json
-    appsettings.json
-    appsettings.Development.json
-    ClubFlow.Api.csproj
-    Program.cs
-    Responses/
-      ApiResponses.cs
-      ValidationErrorResponseFactory.cs
-    Serialization/EventStatusJsonConverter.cs
-    Services/EventStore.cs
+src/ClubFlow.Api/
+  Authentication/    Mock bearer-token handler
+  Controllers/       Events and greeting endpoints
+  Dtos/              Create/update requests and validation
+  Models/            Event and EventStatus
+  Responses/         JSON envelopes and validation errors
+  Serialization/     Status JSON conversion
+  Services/          In-memory EventStore
+  Properties/        Development launch settings
+  Program.cs         Startup and middleware
+scripts/             Authentication and validation HTTP tests
+docs/                API reference and verification reports
+requests/            Example HTTP requests
+CONTRIBUTORS.md       Team details
+```
+
+## Contributors
+
+- **Ismayil Alizada (18162):** backend setup, Event model, mock data and CRUD endpoints.
+- **Toghrul Ismayilzada (18124):** mock authentication, authorization, request validation and error handling.
+- **Zamin Ashurov (18125):** greeting page, API documentation, testing and final project documentation.
+
+GitHub usernames and responsibilities are listed in [CONTRIBUTORS.md](CONTRIBUTORS.md).
+Current output of `git shortlog -sn --all`:
+
+```text
+    13  Ismayil Alizada
+     6  Toghrul Ismayilzada
 ```
