@@ -1,0 +1,81 @@
+@baseUrl = http://localhost:5024
+@userAToken = user-a-token
+@userBToken = user-b-token
+@adminToken = admin-token
+# After POST, copy data.id (or the Location ID) into eventId before PUT/DELETE.
+# On a fresh backend the first created event normally has ID 5.
+@eventId = 5
+
+### List all events as Administrator (200)
+GET {{baseUrl}}/api/v1/events?page=1&perPage=20
+Authorization: Bearer {{adminToken}}
+Accept: application/json
+
+### Retrieve User A's seeded event (200 on a fresh backend)
+GET {{baseUrl}}/api/v1/events/1
+Authorization: Bearer {{userAToken}}
+Accept: application/json
+
+### Create a workshop owned by User A (201 + Location)
+# Repeating this request without deleting/updating the event returns 409.
+POST {{baseUrl}}/api/v1/events
+Authorization: Bearer {{userAToken}}
+Content-Type: application/json
+
+{
+  "title": "API Design Workshop",
+  "description": "Learn REST API design with the Programming Club.",
+  "location": "Engineering Lab 204",
+  "startTimeUtc": "2026-12-12T13:00:00Z",
+  "endTimeUtc": "2026-12-12T15:00:00Z",
+  "capacity": 30,
+  "expectedAttendance": 24,
+  "status": "Draft"
+}
+
+### Replace the created workshop's editable fields (200)
+PUT {{baseUrl}}/api/v1/events/{{eventId}}
+Authorization: Bearer {{userAToken}}
+Content-Type: application/json
+
+{
+  "title": "API Design Workshop - revised",
+  "description": "Practice API design and HTTP testing with the Programming Club.",
+  "location": "Engineering Lab 205",
+  "startTimeUtc": "2026-12-12T13:00:00Z",
+  "endTimeUtc": "2026-12-12T15:00:00Z",
+  "capacity": 40,
+  "expectedAttendance": 32,
+  "status": "Published"
+}
+
+### Delete the created workshop (200, data=null)
+DELETE {{baseUrl}}/api/v1/events/{{eventId}}
+Authorization: Bearer {{userAToken}}
+
+### Public HTML greeting (200; no token)
+GET {{baseUrl}}/api/v1/greeting
+Accept: text/html
+
+### Missing authentication (401 UNAUTHORIZED)
+GET {{baseUrl}}/api/v1/events
+Accept: application/json
+
+### User B cannot read User A's seeded event (403 FORBIDDEN)
+GET {{baseUrl}}/api/v1/events/1
+Authorization: Bearer {{userBToken}}
+Accept: application/json
+
+### Invalid title and capacity (400 VALIDATION_ERROR with details)
+POST {{baseUrl}}/api/v1/events
+Authorization: Bearer {{userAToken}}
+Content-Type: application/json
+
+{
+  "title": "Hi",
+  "description": "A Programming Club workshop.",
+  "location": "Engineering Lab 204",
+  "startTimeUtc": "2026-12-12T13:00:00Z",
+  "endTimeUtc": "2026-12-12T15:00:00Z",
+  "capacity": 0
+}

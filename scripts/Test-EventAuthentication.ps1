@@ -1,3 +1,4 @@
+#Requires -Version 5.1
 param(
     [string]$BaseUrl = 'http://localhost:5024',
     [switch]$AfterRestart
@@ -11,6 +12,10 @@ $results = [System.Collections.Generic.List[object]]::new()
 $userA = 'Bearer user-a-token'
 $userB = 'Bearer user-b-token'
 $admin = 'Bearer admin-token'
+$jsonParameters = @{}
+if ((Get-Command ConvertFrom-Json).Parameters.ContainsKey('DateKind')) {
+    $jsonParameters.DateKind = 'String'
+}
 
 function Assert-True([bool]$Condition, [string]$Message) {
     if (-not $Condition) { throw $Message }
@@ -20,16 +25,35 @@ function Send-Request(
     [string]$Name, [string]$Method, [string]$Path, [int]$ExpectedStatus,
     [string]$Authorization = $admin, [string]$Body = ''
 ) {
-    $parameters = @{
-        Uri = "$BaseUrl$Path"; Method = $Method
-        SkipHttpErrorCheck = $true; SkipHeaderValidation = $true; TimeoutSec = 10
+    # This transport also reads error responses on Windows PowerShell 5.1.
+    $request = [System.Net.HttpWebRequest]::Create("$BaseUrl$Path")
+    $request.Method = $Method
+    $request.Timeout = 10000
+    $request.AllowAutoRedirect = $false
+    if ($Authorization) { $request.Headers['Authorization'] = $Authorization }
+    if ($Body) {
+        $request.ContentType = 'application/json'
+        $bytes = [Text.Encoding]::UTF8.GetBytes($Body)
+        $request.ContentLength = $bytes.Length
+        $stream = $request.GetRequestStream()
+        try { $stream.Write($bytes, 0, $bytes.Length) } finally { $stream.Dispose() }
     }
-    if ($Authorization) { $parameters.Headers = @{ Authorization = $Authorization } }
-    if ($Body) { $parameters.ContentType = 'application/json'; $parameters.Body = $Body }
-    $response = Invoke-WebRequest @parameters
+    try { $webResponse = $request.GetResponse() } catch [System.Net.WebException] {
+        $webResponse = $_.Exception.Response
+        if ($null -eq $webResponse) { throw }
+    }
+    try {
+        $reader = [IO.StreamReader]::new($webResponse.GetResponseStream())
+        try { $content = $reader.ReadToEnd() } finally { $reader.Dispose() }
+        $response = [pscustomobject]@{
+            StatusCode = [int]$webResponse.StatusCode
+            Content = $content
+            Headers = $webResponse.Headers
+        }
+    } finally { $webResponse.Dispose() }
     Assert-True ($response.StatusCode -eq $ExpectedStatus) "$Name expected $ExpectedStatus, got $($response.StatusCode): $($response.Content)"
     Assert-True (([string]$response.Headers['Content-Type']) -match 'application/json') "$Name did not return JSON."
-    $json = $response.Content | ConvertFrom-Json -DateKind String
+    $json = $response.Content | ConvertFrom-Json @jsonParameters
 
     if ($ExpectedStatus -ge 400) {
         Assert-True ($json.success -eq $false -and @($json.PSObject.Properties.Name).Count -eq 2 -and $null -ne $json.error) "$Name has an invalid error envelope."
@@ -54,7 +78,7 @@ function Send-Request(
         Assert-True ($json.success -eq $true -and $null -ne $json.message -and $null -ne $json.PSObject.Properties['data'] -and $null -eq $json.PSObject.Properties['error']) "$Name has an invalid success envelope."
         if ($Method -eq 'DELETE') { Assert-True ($null -eq $json.data) "$Name must return data=null." }
         if ($ExpectedStatus -eq 201) {
-            Assert-True (([string]$response.Headers.Location) -ceq "$BaseUrl/api/v1/events/$($json.data.id)") "$Name has an incorrect Location header."
+            Assert-True (([string]$response.Headers['Location']) -ceq "$BaseUrl/api/v1/events/$($json.data.id)") "$Name has an incorrect Location header."
         }
     }
 
@@ -71,8 +95,8 @@ $spoofBody = '{"id":999,"ownerId":"user-b","role":"Administrator","title":"Stude
 $updateBody = '{"id":777,"ownerId":"admin","role":"Administrator","title":"Advanced API Workshop","description":"Test HTTP endpoints with the Programming Club.","location":"Engineering Lab 205","startTimeUtc":"2026-12-06T17:00:00+04:00","endTimeUtc":"2026-12-06T19:00:00+04:00","capacity":40,"expectedAttendance":32,"status":"Cancelled"}'
 
 if ($AfterRestart) {
-    foreach ($previous in @(Get-Content -LiteralPath $resultsPath -Raw | ConvertFrom-Json)) { $results.Add($previous) }
-    $seed = Get-Content -LiteralPath $seedPath -Raw | ConvertFrom-Json -DateKind String
+    foreach ($previous in (Get-Content -LiteralPath $resultsPath -Raw | ConvertFrom-Json)) { $results.Add($previous) }
+    $seed = Get-Content -LiteralPath $seedPath -Raw | ConvertFrom-Json @jsonParameters
     $restored = Send-Request 'Restart restores original seed' GET '/api/v1/events' 200
     Assert-True (($restored.data | ConvertTo-Json -Depth 10) -ceq ($seed | ConvertTo-Json -Depth 10)) 'Restart did not restore the exact original mock data.'
     foreach ($identity in @(@{ Header = $userA; Owner = 'user-a' }, @{ Header = $userB; Owner = 'user-b' })) {
