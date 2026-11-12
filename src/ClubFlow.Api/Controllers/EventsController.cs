@@ -68,12 +68,17 @@ public sealed class EventsController : ControllerBase
             Title = request.Title,
             Description = request.Description,
             Location = request.Location,
-            StartTimeUtc = request.StartTimeUtc.ToUniversalTime(),
-            EndTimeUtc = request.EndTimeUtc.ToUniversalTime(),
-            Capacity = request.Capacity,
+            StartTimeUtc = request.StartTimeUtc!.Value.ToUniversalTime(),
+            EndTimeUtc = request.EndTimeUtc!.Value.ToUniversalTime(),
+            Capacity = request.Capacity!.Value,
             ExpectedAttendance = request.ExpectedAttendance,
             Status = request.Status
         });
+
+        if (createdEvent is null)
+        {
+            return EventConflict();
+        }
 
         return CreatedAtAction(nameof(GetById), new { id = createdEvent.Id },
             new ApiResponse<Event>("Event created successfully.", createdEvent));
@@ -98,12 +103,17 @@ public sealed class EventsController : ControllerBase
             Title = request.Title,
             Description = request.Description,
             Location = request.Location,
-            StartTimeUtc = request.StartTimeUtc.ToUniversalTime(),
-            EndTimeUtc = request.EndTimeUtc.ToUniversalTime(),
-            Capacity = request.Capacity,
+            StartTimeUtc = request.StartTimeUtc!.Value.ToUniversalTime(),
+            EndTimeUtc = request.EndTimeUtc!.Value.ToUniversalTime(),
+            Capacity = request.Capacity!.Value,
             ExpectedAttendance = request.ExpectedAttendance,
             Status = request.Status
-        });
+        }, out var conflict);
+
+        if (conflict)
+        {
+            return EventConflict();
+        }
 
         if (updatedEvent is null)
         {
@@ -139,6 +149,12 @@ public sealed class EventsController : ControllerBase
     {
         return User.IsInRole(MockBearerAuthenticationHandler.AdministratorRole)
             || clubEvent.OwnerId == User.FindFirstValue(ClaimTypes.NameIdentifier);
+    }
+
+    private ConflictObjectResult EventConflict()
+    {
+        return Conflict(new ApiErrorResponse(new ApiError("CONFLICT",
+            "An event with the same title, location and start time already exists.")));
     }
 
     private NotFoundObjectResult EventNotFound()

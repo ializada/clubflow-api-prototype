@@ -33,7 +33,15 @@ function Send-Request(
 
     if ($ExpectedStatus -ge 400) {
         Assert-True ($json.success -eq $false -and @($json.PSObject.Properties.Name).Count -eq 2 -and $null -ne $json.error) "$Name has an invalid error envelope."
-        Assert-True (@($json.error.PSObject.Properties.Name).Count -eq 2) "$Name leaked extra error details."
+        if ($ExpectedStatus -eq 400 -and $json.error.code -ceq 'VALIDATION_ERROR') {
+            Assert-True (@($json.error.PSObject.Properties.Name).Count -eq 3 -and $json.error.message -ceq 'The request contains invalid or missing fields.') "$Name has an incorrect validation envelope."
+            Assert-True ($json.error.details.Count -gt 0) "$Name is missing validation details."
+            foreach ($detail in $json.error.details) {
+                Assert-True (@($detail.PSObject.Properties.Name).Count -eq 2 -and -not [string]::IsNullOrWhiteSpace($detail.field) -and -not [string]::IsNullOrWhiteSpace($detail.message)) "$Name has invalid field details."
+            }
+        } else {
+            Assert-True (@($json.error.PSObject.Properties.Name).Count -eq 2 -and $null -eq $json.error.PSObject.Properties['details']) "$Name leaked extra error details."
+        }
         switch ($ExpectedStatus) {
             401 {
                 Assert-True ($json.error.code -ceq 'UNAUTHORIZED' -and $json.error.message -ceq 'Authentication is required.') "$Name has an incorrect 401 envelope."
@@ -134,7 +142,7 @@ if ($AfterRestart) {
     Assert-True (($unchanged.data | ConvertTo-Json -Depth 10) -ceq $seedJson) 'Denied operations modified data.'
 
     $createdA = Send-Request 'User A creates without owner' POST '/api/v1/events' 201 $userA $createBody
-    $spoofedA = Send-Request 'User A cannot spoof owner or role' POST '/api/v1/events' 201 $userA $spoofBody
+    $spoofedA = Send-Request 'User A cannot spoof owner or role' POST '/api/v1/events' 201 $userA ($spoofBody -replace 'Student API Workshop', 'Student API Workshop ownership check')
     $createdB = Send-Request 'User B cannot spoof owner' POST '/api/v1/events' 201 $userB ($spoofBody -replace '"user-b"', '"user-a"')
     $createdAdmin = Send-Request 'Administrator creates as admin' POST '/api/v1/events' 201 $admin $spoofBody
     Assert-True ($createdA.data.id -eq 5 -and $createdA.data.ownerId -ceq 'user-a' -and $spoofedA.data.id -eq 6 -and $spoofedA.data.ownerId -ceq 'user-a') 'User A identity or ID allocation failed.'
@@ -159,9 +167,11 @@ if ($AfterRestart) {
         @{ Header = $admin; Id = 7; Owner = 'user-b' },
         @{ Header = $admin; Id = 8; Owner = 'admin' }
     )) {
-        $updated = Send-Request 'Authorized PUT preserves identity' PUT "/api/v1/events/$($update.Id)" 200 $update.Header $updateBody
+        $expectedTitle = "Advanced API Workshop $($update.Id)"
+        $eventUpdateBody = $updateBody -replace 'Advanced API Workshop', $expectedTitle
+        $updated = Send-Request 'Authorized PUT preserves identity' PUT "/api/v1/events/$($update.Id)" 200 $update.Header $eventUpdateBody
         Assert-True ($updated.data.id -eq $update.Id -and $updated.data.ownerId -ceq $update.Owner) 'PUT transferred identity.'
-        Assert-True ($updated.data.title -ceq 'Advanced API Workshop' -and $updated.data.description -ceq 'Test HTTP endpoints with the Programming Club.' -and $updated.data.location -ceq 'Engineering Lab 205' -and $updated.data.capacity -eq 40 -and $updated.data.expectedAttendance -eq 32 -and $updated.data.status -ceq 'Cancelled' -and $updated.data.startTimeUtc -ceq '2026-12-06T13:00:00+00:00' -and $updated.data.endTimeUtc -ceq '2026-12-06T15:00:00+00:00') 'PUT changed editable field or UTC behavior.'
+        Assert-True ($updated.data.title -ceq $expectedTitle -and $updated.data.description -ceq 'Test HTTP endpoints with the Programming Club.' -and $updated.data.location -ceq 'Engineering Lab 205' -and $updated.data.capacity -eq 40 -and $updated.data.expectedAttendance -eq 32 -and $updated.data.status -ceq 'Cancelled' -and $updated.data.startTimeUtc -ceq '2026-12-06T13:00:00+00:00' -and $updated.data.endTimeUtc -ceq '2026-12-06T15:00:00+00:00') 'PUT changed editable field or UTC behavior.'
         $read = Send-Request 'Updated event persists' GET "/api/v1/events/$($update.Id)" 200 $update.Header
         Assert-True (($read.data | ConvertTo-Json -Depth 10) -ceq ($updated.data | ConvertTo-Json -Depth 10)) 'PUT did not persist.'
     }
@@ -181,7 +191,7 @@ if ($AfterRestart) {
     }
     foreach ($body in @('{', 'null', ($createBody -replace '"Draft"', '"Unknown"'), ($createBody -replace '"Draft"', '1'))) {
         $bad = Send-Request 'Existing JSON error preserved' POST '/api/v1/events' 400 $userA $body
-        Assert-True ($bad.error.code -ceq 'INVALID_REQUEST') 'JSON error changed.'
+        Assert-True ($bad.error.code -ceq 'VALIDATION_ERROR') 'Expected a VALIDATION_ERROR for malformed JSON or an invalid enum.'
     }
     $null = Send-Request 'Modify seed before restart' PUT '/api/v1/events/1' 200 $userA $updateBody
     $null = Send-Request 'Administrator deletes foreign seed before restart' DELETE '/api/v1/events/2' 200
